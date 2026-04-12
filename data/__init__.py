@@ -50,13 +50,34 @@ def create_dataset(dataset, config, min_scale=0.5):
         return train_dataset, test_dataset
     
     elif dataset=='retrieval_msrvtt':
-        train_dataset = MSRVTTDataset_train(config['video_root'], config['ann_root'])
-        test_dataset = MSRVTTDataset_eval(config['video_root'], config['ann_root'])
+        train_dataset = MSRVTTDataset_train(
+            config['video_root'],
+            config['ann_root'],
+            num_frm=config['num_frm_train'],
+            max_img_size=config['image_size'],
+        )
+        test_dataset = MSRVTTDataset_eval(
+            config['video_root'],
+            config['ann_root'],
+            num_frm=config['num_frm_test'],
+            frm_sampling_strategy='uniform',
+            max_img_size=config['image_size'],
+        )
         return train_dataset, test_dataset
 
     elif dataset=='retrieval_didemo':
-        train_dataset = DidemoDataset_train(config['video_root'], config['ann_root'])
-        test_dataset = DidemoDataset_eval(config['video_root'], config['ann_root'])
+        train_dataset = DidemoDataset_train(
+            config['video_root'],
+            config['ann_root'],
+            num_frm=config['num_frm_train'],
+            max_img_size=config['image_size'],
+        )
+        test_dataset = DidemoDataset_eval(
+            config['video_root'],
+            config['ann_root'],
+            num_frm=config['num_frm_test'],
+            max_img_size=config['image_size'],
+        )
         return train_dataset, test_dataset
     
     elif dataset=='msrvtt-qa':

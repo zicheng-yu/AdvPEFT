@@ -18,6 +18,7 @@ from timm.models.layers import trunc_normal_, DropPath
 from timm.models.helpers import named_apply, adapt_input_conv
 from einops import rearrange, reduce, repeat
 from fairscale.nn.checkpoint.checkpoint_activations import checkpoint_wrapper
+from CP.advlora import wrap_linear_layer
 
 
 class Mlp(nn.Module):
@@ -40,18 +41,21 @@ class Mlp(nn.Module):
 
     def forward(self, x, CP_U=None, CP_V=None, CP_C=None):
         B, N, C = x.shape
-        CPc = CP_C @ self.mlp_CP
-        fc1_cp, fc2_cp = CPc[:, :, :4].reshape(self.R, self.R * 4), CPc[:, :, 4:].reshape(self.R,self.R * 4)
         h = self.fc1(x)  # B N 4C
-        h += CP_V(self.dp(CP_U(x) @ fc1_cp).reshape(
-            B, N, 4, self.R)).reshape(
-            B, N, 4 * C) * self.s
+        if CP_U is not None and CP_V is not None and CP_C is not None:
+            CPc = CP_C @ self.mlp_CP
+            fc1_cp = CPc[:, :, :4].reshape(self.R, self.R * 4)
+            fc2_cp = CPc[:, :, 4:].reshape(self.R, self.R * 4)
+            h += CP_V(self.dp(CP_U(x) @ fc1_cp).reshape(
+                B, N, 4, self.R)).reshape(
+                B, N, 4 * C) * self.s
         x = self.act(h)
         x = self.drop(x)
         h = self.fc2(x)
         x = x.reshape(B, N, 4, C)
-        h += CP_V(self.dp(CP_U(x).reshape(
-            B, N, 4 * self.R) @ fc2_cp.t())) * self.s
+        if CP_U is not None and CP_V is not None and CP_C is not None:
+            h += CP_V(self.dp(CP_U(x).reshape(
+                B, N, 4 * self.R) @ fc2_cp.t())) * self.s
         x = self.drop(h)
         return x
 
@@ -94,13 +98,15 @@ class Attention(nn.Module):
         B, N, C = x.shape
         qkv = self.qkv(x)
 
-        CPc = CP_C @ self.CP_attention # (R * R * 4)
-        q_cp, k_cp, v_cp, proj_cp = CPc[:, :, 0], CPc[:, :, 1], CPc[:, :, 2], CPc[:, :, 3]
+        proj_cp = None
+        if CP_U is not None and CP_V is not None and CP_C is not None:
+            CPc = CP_C @ self.CP_attention # (R * R * 4)
+            q_cp, k_cp, v_cp, proj_cp = CPc[:, :, 0], CPc[:, :, 1], CPc[:, :, 2], CPc[:, :, 3]
 
-        q = CP_V(self.dp(CP_U(x) @ q_cp))
-        k = CP_V(self.dp(CP_U(x) @ k_cp))
-        v = CP_V(self.dp(CP_U(x) @ v_cp))
-        qkv += torch.cat([q, k, v], dim=2)
+            q = CP_V(self.dp(CP_U(x) @ q_cp))
+            k = CP_V(self.dp(CP_U(x) @ k_cp))
+            v = CP_V(self.dp(CP_U(x) @ v_cp))
+            qkv += torch.cat([q, k, v], dim=2)
 
         qkv = qkv.reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
@@ -111,7 +117,8 @@ class Attention(nn.Module):
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         proj = self.proj(x)
-        proj += CP_V(self.dp(CP_U(x) @ proj_cp)) * self.s 
+        if proj_cp is not None:
+            proj += CP_V(self.dp(CP_U(x) @ proj_cp)) * self.s
         x = self.proj_drop(proj)
         return x
 
@@ -242,6 +249,13 @@ class VisionTransformer(nn.Module):
 
         x = self.norm(x)
         return x
+
+    def enable_advlora(self, rank, alpha_init=1e-3, kmeans_iters=10):
+        for block in self.blocks:
+            wrap_linear_layer(block.attn, "qkv", rank, alpha_init, kmeans_iters)
+            wrap_linear_layer(block.attn, "proj", rank, alpha_init, kmeans_iters)
+            wrap_linear_layer(block.mlp, "fc1", rank, alpha_init, kmeans_iters)
+            wrap_linear_layer(block.mlp, "fc2", rank, alpha_init, kmeans_iters)
 
     @torch.jit.ignore()
     def load_pretrained(self, checkpoint_path, prefix=''):

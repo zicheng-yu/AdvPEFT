@@ -28,6 +28,9 @@ import datetime
 import torch
 import torch.distributed as dist
 
+IMAGE_MEAN = (0.48145466, 0.4578275, 0.40821073)
+IMAGE_STD = (0.26862954, 0.26130258, 0.27577711)
+
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
     window or the global series average.
@@ -275,5 +278,57 @@ def init_distributed_mode(args):
                                          world_size=args.world_size, rank=args.rank, timeout=datetime.timedelta(seconds=18000))
     torch.distributed.barrier()
     setup_for_distributed(args.rank == 0)        
-        
+
+
+def get_image_stats(device, dtype, ndim):
+    shape = [1] * ndim
+    shape[-3] = 3
+    mean = torch.tensor(IMAGE_MEAN, device=device, dtype=dtype).view(*shape)
+    std = torch.tensor(IMAGE_STD, device=device, dtype=dtype).view(*shape)
+    pixel_min = (0.0 - mean) / std
+    pixel_max = (1.0 - mean) / std
+    return mean, std, pixel_min, pixel_max
+
+
+def build_video_attack_mask(videos, attack_ratio):
+    batch_size, num_frames = videos.shape[:2]
+    num_attack_frames = max(1, int(round(num_frames * attack_ratio)))
+    mask = torch.zeros_like(videos)
+    for batch_idx in range(batch_size):
+        frame_indices = torch.randperm(num_frames, device=videos.device)[:num_attack_frames]
+        mask[batch_idx, frame_indices] = 1
+    return mask
+
+
+def pgd_attack(model, inputs, caption, alpha, idx, config):
+    _, std, pixel_min, pixel_max = get_image_stats(inputs.device, inputs.dtype, inputs.ndim)
+    epsilon = torch.as_tensor(config['adv_epsilon'], device=inputs.device, dtype=inputs.dtype) / std
+    step_size = torch.as_tensor(config['adv_step_size'], device=inputs.device, dtype=inputs.dtype) / std
+
+    inputs_orig = inputs.detach()
+    adv_inputs = inputs_orig.clone()
+    attack_mask = None
+    if inputs.ndim == 5:
+        attack_mask = build_video_attack_mask(inputs_orig, config['video_attack_ratio'])
+
+    for _ in range(config['adv_steps']):
+        adv_inputs.requires_grad_(True)
+        loss_ita, loss_itm = model(adv_inputs, caption, alpha=alpha, idx=idx, update_queue=False)
+        loss = loss_ita + loss_itm
+        gradients = torch.autograd.grad(loss, adv_inputs, only_inputs=True)[0]
+        model.zero_grad()
+
+        step = step_size * gradients.sign()
+        if attack_mask is not None:
+            step = step * attack_mask
+
+        adv_inputs = adv_inputs.detach() + step
+        delta = adv_inputs - inputs_orig
+        if attack_mask is not None:
+            delta = delta * attack_mask
+        delta = torch.max(torch.min(delta, epsilon), -epsilon)
+        adv_inputs = inputs_orig + delta
+        adv_inputs = torch.max(torch.min(adv_inputs, pixel_max), pixel_min).detach()
+
+    return adv_inputs
         

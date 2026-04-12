@@ -34,9 +34,15 @@ alpha: 0.4
 beta: 0
 k_test: 256
 negative_all_rank: True
+lora_rank: 10
+adaptive_init: 0.001
+align_loss_weight: 0.001
+adv_steps: 3
+adv_epsilon: 0.00392156862745098
+adv_step_size: 0.00392156862745098
+video_attack_ratio: 0.2
 
 # optimizer
 weight_decay: 0.05
 min_lr: 0
-max_epoch: 6
-
+max_epoch: 5

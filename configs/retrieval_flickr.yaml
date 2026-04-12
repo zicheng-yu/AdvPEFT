@@ -12,7 +12,7 @@ batch_size_train: 16
 batch_size_test: 32
 vit_grad_ckpt: False
 vit_ckpt_layer: 4
-init_lr: 1e-4
+init_lr: 1e-5
 
 
 modality: image # image video
@@ -33,9 +33,15 @@ alpha: 0.4
 beta: 0
 k_test: 128
 negative_all_rank: False
+lora_rank: 10
+adaptive_init: 0.001
+align_loss_weight: 0.001
+adv_steps: 3
+adv_epsilon: 0.00392156862745098
+adv_step_size: 0.00392156862745098
+video_attack_ratio: 0.2
 
 # optimizer
 weight_decay: 0.05
 min_lr: 0
-max_epoch: 4
-
+max_epoch: 5

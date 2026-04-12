@@ -44,6 +44,7 @@ from transformers.modeling_utils import (
 )
 from transformers.utils import logging
 from transformers.models.bert.configuration_bert import BertConfig
+from CP.advlora import wrap_linear_layer
 logger = logging.get_logger(__name__)
 
 
@@ -169,34 +170,41 @@ class BertSelfAttention(nn.Module):
         CP_V=None, # (R * 768) 
         CP_C=None # (R * R * R)
     ):
-        # Query
         mixed_query_layer = self.query(hidden_states)
-        mixed_query_layer += CP_V(self.dp(CP_U(hidden_states)) @ (CP_C @ self.q_CP)[:,:,0])
-
+        use_cp = CP_U is not None and CP_V is not None and CP_C is not None
+        if use_cp:
+            mixed_query_layer += CP_V(self.dp(CP_U(hidden_states)) @ (CP_C @ self.q_CP)[:, :, 0])
 
         is_cross_attention = encoder_hidden_states is not None
-        
-        # code for implementing LoRA
+
         if lora_key_layer is not None:
             lora_key_layer_ = self.transpose_for_scores(lora_key_layer[0])
             lora_value_layer_ = self.transpose_for_scores(lora_key_layer[1])
-            
+
         if is_cross_attention:
-            key_layer = self.transpose_for_scores(self.key(encoder_hidden_states) + CP_V(self.dp(CP_U(encoder_hidden_states)) @ (CP_C @ self.k_CP)[:,:,0]))
-            value_layer = self.transpose_for_scores(self.value(encoder_hidden_states) + CP_V(self.dp(CP_U(encoder_hidden_states)) @ (CP_C @ self.v_CP)[:,:,0]))
-            attention_mask = encoder_attention_mask # note the attention_mask changes to encoder_attention_mask, since the mask operation is performed on key and values
+            key_states = self.key(encoder_hidden_states)
+            value_states = self.value(encoder_hidden_states)
+            if use_cp:
+                key_states = key_states + CP_V(self.dp(CP_U(encoder_hidden_states)) @ (CP_C @ self.k_CP)[:, :, 0])
+                value_states = value_states + CP_V(self.dp(CP_U(encoder_hidden_states)) @ (CP_C @ self.v_CP)[:, :, 0])
+            key_layer = self.transpose_for_scores(key_states)
+            value_layer = self.transpose_for_scores(value_states)
+            attention_mask = encoder_attention_mask
         elif past_key_value is not None:
             key_layer = self.transpose_for_scores(self.key(hidden_states))
             value_layer = self.transpose_for_scores(self.value(hidden_states))
             key_layer = torch.cat([past_key_value[0], key_layer], dim=2)
             value_layer = torch.cat([past_key_value[1], value_layer], dim=2)
         else:
-            key_layer = self.transpose_for_scores(self.key(hidden_states) + CP_V(self.dp(CP_U(hidden_states)) @ (CP_C @ self.k_CP)[:,:,0]))
-            value_layer = self.transpose_for_scores(self.value(hidden_states) + CP_V(self.dp(CP_U(hidden_states)) @ (CP_C @ self.v_CP)[:,:,0]))
+            key_states = self.key(hidden_states)
+            value_states = self.value(hidden_states)
+            if use_cp:
+                key_states = key_states + CP_V(self.dp(CP_U(hidden_states)) @ (CP_C @ self.k_CP)[:, :, 0])
+                value_states = value_states + CP_V(self.dp(CP_U(hidden_states)) @ (CP_C @ self.v_CP)[:, :, 0])
+            key_layer = self.transpose_for_scores(key_states)
+            value_layer = self.transpose_for_scores(value_states)
 
-        
         query_layer = self.transpose_for_scores(mixed_query_layer) 
-        
 
         if lora_key_layer is not None: 
             key_layer = key_layer + lora_key_layer_
@@ -720,6 +728,22 @@ class BertModel(BertPreTrainedModel):
     def _prune_heads(self, heads_to_prune):
         for layer, heads in heads_to_prune.items():
             self.encoder.layer[layer].attention.prune_heads(heads)
+
+    def enable_advlora(self, rank, alpha_init=1e-3, kmeans_iters=10):
+        for layer in self.encoder.layer:
+            wrap_linear_layer(layer.attention.self, "query", rank, alpha_init, kmeans_iters)
+            wrap_linear_layer(layer.attention.self, "key", rank, alpha_init, kmeans_iters)
+            wrap_linear_layer(layer.attention.self, "value", rank, alpha_init, kmeans_iters)
+            wrap_linear_layer(layer.attention.output, "dense", rank, alpha_init, kmeans_iters)
+
+            if hasattr(layer, "crossattention"):
+                wrap_linear_layer(layer.crossattention.self, "query", rank, alpha_init, kmeans_iters)
+                wrap_linear_layer(layer.crossattention.self, "key", rank, alpha_init, kmeans_iters)
+                wrap_linear_layer(layer.crossattention.self, "value", rank, alpha_init, kmeans_iters)
+                wrap_linear_layer(layer.crossattention.output, "dense", rank, alpha_init, kmeans_iters)
+
+            wrap_linear_layer(layer.intermediate, "dense", rank, alpha_init, kmeans_iters)
+            wrap_linear_layer(layer.output, "dense", rank, alpha_init, kmeans_iters)
 
     
     def get_extended_attention_mask(self, attention_mask: Tensor, input_shape: Tuple[int], device: device, is_decoder: bool) -> Tensor:

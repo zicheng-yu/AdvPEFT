@@ -10,10 +10,10 @@ pretrained: 'https://storage.googleapis.com/sfr-vision-language-research/BLIP/mo
 # size of vit model; base or large
 vit: 'base'
 batch_size_train: 8
-batch_size_test: 16
+batch_size_test: 8
 k_test: 128
 image_size: 224
-num_frm_test: 8 
+num_frm_test: 16 
 num_frm_train: 8 
 
 vit_grad_ckpt: False 
@@ -38,6 +38,13 @@ queue_size: 57600
 alpha: 0.4
 beta: 0
 negative_all_rank: True
+lora_rank: 10
+adaptive_init: 0.001
+align_loss_weight: 0.001
+adv_steps: 3
+adv_epsilon: 0.00392156862745098
+adv_step_size: 0.00392156862745098
+video_attack_ratio: 0.2
 
 # optimizer
 weight_decay: 0.05
