@@ -1,21 +1,33 @@
 import re
 import json
 import os
+import io
+import math
+import random
+from collections import defaultdict
 
+import numpy as np
+from PIL import Image
 import torch
 import torch.distributed as dist
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
-from PIL import Image
-import io
-import av
-import torch
-import numpy as np
-import lmdb
-import math
-import random
-import ujson as json
-from collections import defaultdict
+
+try:
+    import av
+except ImportError:
+    av = None
+
+try:
+    import lmdb
+except ImportError:
+    lmdb = None
+
+try:
+    import ujson as json
+except ImportError:
+    pass
+
 import utils
 
 def pre_caption(caption,max_words=50):
@@ -84,13 +96,12 @@ def save_result(result, result_dir, filename, remove_duplicate=''):
 
     return final_result_file
 
-
-
-from pycocotools.coco import COCO
-from pycocoevalcap.eval import COCOEvalCap
 from torchvision.datasets.utils import download_url
 
 def coco_caption_eval(coco_gt_root, results_file, split):
+    from pycocotools.coco import COCO
+    from pycocoevalcap.eval import COCOEvalCap
+
     urls = {'val':'https://storage.googleapis.com/sfr-vision-language-research/datasets/coco_karpathy_val_gt.json',
             'test':'https://storage.googleapis.com/sfr-vision-language-research/datasets/coco_karpathy_test_gt.json'}
     filenames = {'val':'coco_karpathy_val_gt.json','test':'coco_karpathy_test_gt.json'}    

@@ -329,7 +329,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
+    config = utils.normalize_config(yaml.load(open(args.config, 'r'), Loader=yaml.Loader))
     if args.pretrained:
         print('Pretrained', args.pretrained)
         config['pretrained'] = args.pretrained

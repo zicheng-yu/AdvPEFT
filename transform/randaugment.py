@@ -1,5 +1,10 @@
-import cv2
 import numpy as np
+from PIL import Image, ImageEnhance, ImageOps
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 
 
 ## aug functions
@@ -198,6 +203,63 @@ def cutout_func(img, pad_size, replace=(0, 0, 0)):
     return out
 
 
+def identity_func_pil(img):
+    return img
+
+
+def autocontrast_func_pil(img):
+    return ImageOps.autocontrast(img)
+
+
+def equalize_func_pil(img):
+    return ImageOps.equalize(img)
+
+
+def rotate_func_pil(img, degree, fill=(0, 0, 0)):
+    return img.rotate(degree, fillcolor=fill)
+
+
+def solarize_func_pil(img, thresh=128):
+    return ImageOps.solarize(img, threshold=thresh)
+
+
+def color_func_pil(img, factor):
+    return ImageEnhance.Color(img).enhance(factor)
+
+
+def contrast_func_pil(img, factor):
+    return ImageEnhance.Contrast(img).enhance(factor)
+
+
+def brightness_func_pil(img, factor):
+    return ImageEnhance.Brightness(img).enhance(factor)
+
+
+def sharpness_func_pil(img, factor):
+    return ImageEnhance.Sharpness(img).enhance(factor)
+
+
+def shear_x_func_pil(img, factor, fill=(0, 0, 0)):
+    return img.transform(img.size, Image.AFFINE, (1, factor, 0, 0, 1, 0), fillcolor=fill)
+
+
+def translate_x_func_pil(img, offset, fill=(0, 0, 0)):
+    return img.transform(img.size, Image.AFFINE, (1, 0, -offset, 0, 1, 0), fillcolor=fill)
+
+
+def translate_y_func_pil(img, offset, fill=(0, 0, 0)):
+    return img.transform(img.size, Image.AFFINE, (1, 0, 0, 0, 1, -offset), fillcolor=fill)
+
+
+def posterize_func_pil(img, bits):
+    bits = max(1, 8 - bits)
+    return ImageOps.posterize(img, bits)
+
+
+def shear_y_func_pil(img, factor, fill=(0, 0, 0)):
+    return img.transform(img.size, Image.AFFINE, (1, 0, 0, factor, 1, 0), fillcolor=fill)
+
+
 ### level to args
 def enhance_level_to_args(MAX_LEVEL):
     def level_to_args(level):
@@ -276,6 +338,23 @@ func_dict = {
     'ShearY': shear_y_func,
 }
 
+pil_func_dict = {
+    'Identity': identity_func_pil,
+    'AutoContrast': autocontrast_func_pil,
+    'Equalize': equalize_func_pil,
+    'Rotate': rotate_func_pil,
+    'Solarize': solarize_func_pil,
+    'Color': color_func_pil,
+    'Contrast': contrast_func_pil,
+    'Brightness': brightness_func_pil,
+    'Sharpness': sharpness_func_pil,
+    'ShearX': shear_x_func_pil,
+    'TranslateX': translate_x_func_pil,
+    'TranslateY': translate_y_func_pil,
+    'Posterize': posterize_func_pil,
+    'ShearY': shear_y_func_pil,
+}
+
 translate_const = 10
 MAX_LEVEL = 10
 replace_value = (128, 128, 128)
@@ -317,8 +396,17 @@ class RandomAugment(object):
         return [(op, 0.5, self.M) for op in sampled_ops]
 
     def __call__(self, img):
+        if self.isPIL and cv2 is None:
+            ops = self.get_random_ops()
+            for name, prob, level in ops:
+                if np.random.random() > prob:
+                    continue
+                args = arg_dict[name](level)
+                img = pil_func_dict[name](img, *args)
+            return img
+
         if self.isPIL:
-            img = np.array(img)            
+            img = np.array(img)
         ops = self.get_random_ops()
         for name, prob, level in ops:
             if np.random.random() > prob:

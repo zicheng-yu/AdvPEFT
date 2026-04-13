@@ -3,12 +3,6 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
 
-from data.coco_karpathy_dataset import coco_karpathy_train, coco_karpathy_retrieval_eval
-from data.flickr30k_dataset import flickr30k_train, flickr30k_retrieval_eval
-from data.vqa_dataset import vqa_dataset
-from data.video_dataset_msrvtt import MSRVTTDataset_train, MSRVTTDataset_eval
-from data.video_dataset_didemo import DidemoDataset_train, DidemoDataset_eval
-from data.videovqa_dataset import videovqa_dataset
 from transform.randaugment import RandomAugment
 from torch.utils.data.dataloader import default_collate
 
@@ -30,19 +24,25 @@ def create_dataset(dataset, config, min_scale=0.5):
         normalize,
         ])  
     
-    if dataset=='retrieval_coco':          
+    if dataset=='retrieval_coco':
+        from data.coco_karpathy_dataset import coco_karpathy_train, coco_karpathy_retrieval_eval
+
         train_dataset = coco_karpathy_train(transform_train, config['image_root'], config['ann_root'])
         val_dataset = coco_karpathy_retrieval_eval(transform_test, config['image_root'], config['ann_root'], 'val') 
         test_dataset = coco_karpathy_retrieval_eval(transform_test, config['image_root'], config['ann_root'], 'test')          
         return train_dataset, val_dataset, test_dataset    
 
-    elif dataset=='retrieval_flickr':          
+    elif dataset=='retrieval_flickr':
+        from data.flickr30k_dataset import flickr30k_train, flickr30k_retrieval_eval
+
         train_dataset = flickr30k_train(transform_train, config['image_root'], config['ann_root'])
         val_dataset = flickr30k_retrieval_eval(transform_test, config['image_root'], config['ann_root'], 'val') 
         test_dataset = flickr30k_retrieval_eval(transform_test, config['image_root'], config['ann_root'], 'test')          
         return train_dataset, val_dataset, test_dataset  
 
-    elif dataset=='vqa': 
+    elif dataset=='vqa':
+        from data.vqa_dataset import vqa_dataset
+
         train_dataset = vqa_dataset(transform_train, config['ann_root'], config['vqa_root'], config['vg_root'], 
                                     train_files = config['train_files'], split='train') 
         test_dataset = vqa_dataset(transform_test, config['ann_root'], config['vqa_root'], config['vg_root'], split='test')
@@ -50,6 +50,8 @@ def create_dataset(dataset, config, min_scale=0.5):
         return train_dataset, test_dataset
     
     elif dataset=='retrieval_msrvtt':
+        from data.video_dataset_msrvtt import MSRVTTDataset_train, MSRVTTDataset_eval
+
         train_dataset = MSRVTTDataset_train(
             config['video_root'],
             config['ann_root'],
@@ -66,6 +68,8 @@ def create_dataset(dataset, config, min_scale=0.5):
         return train_dataset, test_dataset
 
     elif dataset=='retrieval_didemo':
+        from data.video_dataset_didemo import DidemoDataset_train, DidemoDataset_eval
+
         train_dataset = DidemoDataset_train(
             config['video_root'],
             config['ann_root'],
@@ -81,6 +85,8 @@ def create_dataset(dataset, config, min_scale=0.5):
         return train_dataset, test_dataset
     
     elif dataset=='msrvtt-qa':
+        from data.videovqa_dataset import videovqa_dataset
+
         train_dataset = videovqa_dataset(split='train')
         test_dataset = videovqa_dataset(split='test')
         return train_dataset, test_dataset

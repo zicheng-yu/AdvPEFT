@@ -1,4 +1,5 @@
 import math
+import re
 from socket import timeout
 def cosine_lr_schedule(optimizer, epoch, max_epoch, init_lr, min_lr):
     """Decay the learning rate"""
@@ -30,6 +31,28 @@ import torch.distributed as dist
 
 IMAGE_MEAN = (0.48145466, 0.4578275, 0.40821073)
 IMAGE_STD = (0.26862954, 0.26130258, 0.27577711)
+
+
+_INT_RE = re.compile(r"^[+-]?\d+$")
+_FLOAT_RE = re.compile(r"^[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?$")
+
+
+def normalize_config(config):
+    if isinstance(config, dict):
+        return {key: normalize_config(value) for key, value in config.items()}
+    if isinstance(config, list):
+        return [normalize_config(value) for value in config]
+    if isinstance(config, str):
+        lowered = config.lower()
+        if lowered == 'true':
+            return True
+        if lowered == 'false':
+            return False
+        if _INT_RE.match(config):
+            return int(config)
+        if _FLOAT_RE.match(config):
+            return float(config)
+    return config
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a

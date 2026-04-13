@@ -20,7 +20,6 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 import torch.nn.functional as F
 from timm.models.layers import trunc_normal_
-from einops import rearrange, reduce, repeat
 from transformers.activations import ACT2FN
 from transformers.file_utils import (
     ModelOutput,
@@ -394,7 +393,7 @@ class BertLayer(nn.Module):
         self.output = BertOutput(config)
         
         # code for implementing adapter
-        if self.adapter_config and self.adapter_config['adapter']:
+        if self.adapter_config and self.adapter_config.get('adapter', False):
             self.adapter = adapter
             
         # lightweight query transformation operation
@@ -526,7 +525,12 @@ class BertEncoder(nn.Module):
 
     
         lora_key_layer = None
-        if self.adapter_config and self.adapter_config['video_key_adapter'] and mode=='multimodal':
+        if (
+            self.adapter_config
+            and self.adapter_config.get('video_key_adapter', False)
+            and hasattr(self, 'video_key_adapter')
+            and mode == 'multimodal'
+        ):
             lora_key_layer = self.video_key_adapter(encoder_hidden_states)
             lora_value_layer = self.video_value_adapter(encoder_hidden_states)
             lora_key_layer = (lora_key_layer, lora_value_layer) # 放在了一起

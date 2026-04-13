@@ -16,7 +16,6 @@ from timm.models.vision_transformer import _cfg, PatchEmbed
 from timm.models.registry import register_model
 from timm.models.layers import trunc_normal_, DropPath
 from timm.models.helpers import named_apply, adapt_input_conv
-from einops import rearrange, reduce, repeat
 from fairscale.nn.checkpoint.checkpoint_activations import checkpoint_wrapper
 from CP.advlora import wrap_linear_layer
 
@@ -142,7 +141,7 @@ class Block(nn.Module):
             self.attn = checkpoint_wrapper(self.attn)
             self.mlp = checkpoint_wrapper(self.mlp)
 
-        if self.config and self.config['adapter_visual']:
+        if self.config and self.config.get('adapter_visual', False):
             self.adapter = adapter
 
     def forward(self, x, register_hook=False, CP_U=None, CP_V=None, CP_C=None):
@@ -229,7 +228,7 @@ class VisionTransformer(nn.Module):
 
     @torch.jit.ignore
     def no_weight_decay(self):
-        if self.config['temporal_attention']:
+        if self.config.get('temporal_attention', False):
             return {'pos_embed', 'cls_token', 'time_embed'}
         return {'pos_embed', 'cls_token'}
     
